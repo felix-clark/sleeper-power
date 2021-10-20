@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "sleeper-pr"
+version = "0.1.0"
+description = "Analyze sleeper fantasy football league"
+authors = ["Felix Clark <mfclark3690@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "3.10"
+pandas = "^1.3.4"
+numpy = "^1.21.2"
+plotnine = "^0.8.0"
+requests = "^2.26.0"
+adjustText = "^0.7.3"
+pyarrow = "^5.0.0"
+
+[tool.poetry.dev-dependencies]
+types-requests = "^2.25.11"
+pylint = "^2.11.1"
+typing-extensions = "^3.10.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
