@@ -79,6 +79,16 @@ def get_matchups(league_id: int, week: int) -> dict:
     return get_req("league", league_id, "matchups", week)
 
 
+def max_points(league_roster, db_player, matchup) -> float:
+    """Compute the maximum points that could have been acquired from a perfect lineup."""
+    assert abs(sum(matchup["starters_points"]) - matchup["points"]) < 0.01
+    starting_roster = [p for p in league_roster if p != "BN"]
+    # points scored for all players, including bench
+    players_points = matchup["players_points"]
+    print(starting_roster)
+    print(matchup)
+
+
 def main():
     """Run the main testing function"""
     parser = ArgumentParser(description="Generate plots for a Sleeper fantasy football league")
@@ -93,7 +103,7 @@ def main():
     current_week = nfl["week"]
     league = get_league(league_id)
     league_name = league["name"]
-    # league_roster = league["roster_positions"]
+    league_roster = league["roster_positions"]
     users = get_users(league_id)
     user_to_name: dict = {u["user_id"]: u["display_name"] for u in users}
     rosters = get_rosters(league_id)
@@ -127,8 +137,8 @@ def main():
         matchups = get_matchups(league_id, week)
         week_results = {}
         for matchup in matchups:
-            # print(matchup)
-            # exit(1)
+            max_points(league_roster, db_player, matchup)
+            exit(1)
             roster_id = matchup["roster_id"]
             username = user_to_name[roster_to_id[roster_id]]
             points = matchup["points"]
