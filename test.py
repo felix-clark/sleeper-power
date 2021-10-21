@@ -3,16 +3,16 @@
 import os
 import time
 from argparse import ArgumentParser
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import combinations
 
 import pandas as pd
 import requests
-from plotnine import aes, geom_point, geom_text, ggplot, labs
+from plotnine import aes, geom_point, geom_text, ggplot, geom_path, labs
 from plotnine.geoms import annotate
 from plotnine.scales import scale_color_cmap, xlim, ylim
 from plotnine.themes import theme_bw, theme_set
-
+import mip
 
 def get_url(*args) -> str:
     sleeper_base_url = "https://api.sleeper.app/v1"
@@ -79,14 +79,57 @@ def get_matchups(league_id: int, week: int) -> dict:
     return get_req("league", league_id, "matchups", week)
 
 
+def allowed_slots(roster: set, player_pos: list) -> list:
+    """Return a list of allowed positions for the player"""
+    std_pos = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
+    flex_pos = {'FLEX': set(['RB', 'WR', 'TE'])}
+    if roster - set(std_pos) - set(flex_pos.keys()):
+        raise NotImplementedError(f"Position in {roster} not supported")
+    player_set = set(player_pos)
+    allowed = roster & std_pos & player_set
+    for fpos, fset in flex_pos.items():
+        if fset & player_set:
+            allowed.add(fpos)
+    # return in same order as roster
+    return [p for p in roster if p in allowed]
+
+
 def max_points(league_roster, db_player, matchup) -> float:
     """Compute the maximum points that could have been acquired from a perfect lineup."""
     assert abs(sum(matchup["starters_points"]) - matchup["points"]) < 0.01
-    starting_roster = [p for p in league_roster if p != "BN"]
+    starting_roster = Counter([p for p in league_roster if p != "BN"])
     # points scored for all players, including bench
     players_points = matchup["players_points"]
-    print(starting_roster)
-    print(matchup)
+    matchup_players = db_player.loc[matchup["players"]]
+    player_pos = matchup_players["fantasy_positions"]
+    player_allowed = player_pos.apply(lambda ps: allowed_slots(starting_roster.keys(), ps))
+    mod = mip.Model(sense=mip.MAXIMIZE)
+    mod.verbose = 0
+    # List of player ID, slots, and model variable
+    vars = []
+    for pl_id, pl_slots in player_allowed.items():
+        pl_pts = players_points[pl_id]
+        # print(pl_id, pl_slots, pl_pts)
+        pl_vars = []
+        for slot in pl_slots:
+            v = mod.add_var(name=f"{pl_id}_{slot}", var_type=mip.BINARY)
+            pl_vars.append((pl_id, slot, v))
+        # Add constraint that each player is only used once at most
+        mod += mip.xsum(v for _, _, v in pl_vars) <= 1, pl_id
+        vars.extend(pl_vars)
+    for slot, n_players in starting_roster.items():
+        pos_vars = []
+        mod += mip.xsum(v for _, pslot, v in vars if pslot == slot) <= n_players, slot
+        # print(slot, n_players)
+    mod.objective = mip.xsum(players_points[pid] * v for pid, _, v in vars)
+    status = mod.optimize()
+    assert status == mip.OptimizationStatus.OPTIMAL, "FEASIBLE might also be allowed"
+    # for v in mod.vars:
+    #     pl_id = v.name.split("_")[0]
+    #     pl_name = matchup_players.loc[pl_id, "full_name"]
+    #     print(f"{pl_name} {v.name}: {v.x}")
+    best: float = mod.objective_value
+    return best
 
 
 def main():
@@ -110,7 +153,7 @@ def main():
     roster_to_id: dict = {r["roster_id"]: r["owner_id"] for r in rosters}
     n_rosters = len(rosters)
     # print(users)
-    print(rosters[0])
+    # print(rosters[0])
 
     win_rates = {}
     points_for = {}
@@ -131,25 +174,33 @@ def main():
     # exit(1)
     # print(league)
     scores_by_user = defaultdict(list)
+    best_scores_by_user = defaultdict(list)
     scores_by_week = []
+    best_scores_by_week = []
     for week in range(1, current_week):
         print(week)
         matchups = get_matchups(league_id, week)
         week_results = {}
+        best_week_results = {}
         for matchup in matchups:
-            max_points(league_roster, db_player, matchup)
-            exit(1)
             roster_id = matchup["roster_id"]
             username = user_to_name[roster_to_id[roster_id]]
             points = matchup["points"]
+            best_points = max_points(league_roster, db_player, matchup)
             scores_by_user[username].append(points)
+            best_scores_by_user[username].append(best_points)
             week_results[username] = points
+            best_week_results[username] = best_points
         scores_by_week.append(week_results)
+        best_scores_by_week.append(best_week_results)
     # print(scores_by_user)
     # print(scores_by_week)
+    print(best_scores_by_user)
 
     # matchup-independent wins
     miws = defaultdict(int)
+    # best-ball matchup-ind wins
+    bb_miws = defaultdict(int)
 
     for weekly_scores in scores_by_week:
         usernames = weekly_scores.keys()
@@ -166,9 +217,25 @@ def main():
             else:
                 assert False
 
+    for weekly_scores in best_scores_by_week:
+        usernames = weekly_scores.keys()
+        for user_a, user_b in combinations(usernames, 2):
+            score_a = weekly_scores[user_a]
+            score_b = weekly_scores[user_b]
+            if score_a == score_b:
+                print(f"A tie between {user_a} and {user_b}")
+                assert False, "Ties aren't implemented, should add 0.5"
+            elif score_a < score_b:
+                bb_miws[user_b] += 1
+            elif score_a > score_b:
+                bb_miws[user_a] += 1
+            else:
+                assert False
+
     max_miws = (n_rosters - 1) * (current_week - 1)
     # matchup-independent win rates
     miwrs = {u: w / max_miws for u, w in miws.items()}
+    bb_miwrs = {u: w / max_miws for u, w in bb_miws.items()}
     print(miwrs)
     assert sum(miws.values()) == n_rosters * max_miws // 2
     rank_list = sorted(miws, key=lambda n: miws[n], reverse=True)
@@ -179,9 +246,13 @@ def main():
     data = pd.DataFrame(
         {
             "win_rate": win_rates,
+            # matchup-independent win rate
             "miwr": miwrs,
+            # lineup- and matchup-independent win rate ("best ball" miwr)
+            "bb_miwr": bb_miwrs,
             "points_for": points_for,
             "points_against": points_against,
+            "bb_points_for": {n: sum(p) for n, p in best_scores_by_user.items()},
         }
     )
     # data.index.name = "name"
@@ -189,21 +260,19 @@ def main():
     data["luck"] = data["win_rate"] - data["miwr"]
     print(data)
 
-    # theme_set(theme_classic())
     theme_set(theme_bw())
 
-    # id_line_xy = [0., 1.]
-    # id_data = pd.DataFrame({"x": id_line_xy, "y": id_line_xy})
-    # id_line = geom_path(
-    #     data=id_data,
-    #     mapping=aes(x="x", y="y"),
-    #     inherit_aes=False, linetype="dashed"
-    # )
+    id_line_xy = [0., 1.]
+    id_data = pd.DataFrame({"x": id_line_xy, "y": id_line_xy})
+    id_line = geom_path(
+        data=id_data,
+        mapping=aes(x="x", y="y"),
+        inherit_aes=False, linetype="dashed"
+    )
+
     wr_plot = (
         ggplot(data=data, mapping=aes(x="luck", y="miwr"))
-        # + id_line
         + geom_point(mapping=aes(color="points_for"))
-        # + geom_point()
         # Make some dummy points so the text adjustment has room to move
         + geom_point(
             data=pd.DataFrame({"x": [-0.5, 0.5], "y": [0.0, 1.0]}),
@@ -235,11 +304,30 @@ def main():
     wr_plot.save("luck.png")
 
     eff_plot = (
-        ggplot(data=data, mapping=aes(x="points_for", y="miwr"))
+        ggplot(data=data, mapping=aes(x="bb_miwr", y="miwr"))
         + geom_point()
-        + geom_text(mapping=aes(label="manager"))
+        + id_line
+        # Make some dummy points so the text adjustment has room to move
+        + geom_point(
+            data=pd.DataFrame({"x": [0., 1.], "y": [0.0, 1.0]}),
+            alpha=0.0,
+            color="white",
+            inherit_aes=False,
+            mapping=aes(x="x", y="y"),
+        )
+        + geom_text(
+            mapping=aes(label="manager"),
+            adjust_text={
+                "expand_points": (1.5, 1.5),
+                "arrowprops": {
+                    "arrowstyle": "->",
+                },
+            },
+        )
+        + xlim(0.0, 1.0)
         + ylim(0.0, 1.0)
-        + labs(title=f"{league_name} efficiency", x="Points scored", y="Power")
+        + scale_color_cmap("cool")
+        + labs(title=f"{league_name} lineup efficiency", x="Roster power", y="Lineup power")
     )
     eff_plot.save("eff.png")
 

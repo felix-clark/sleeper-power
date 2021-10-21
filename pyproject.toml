@@ -13,6 +13,7 @@ plotnine = "^0.8.0"
 requests = "^2.26.0"
 adjustText = "^0.7.3"
 pyarrow = "^5.0.0"
+mip = "^1.13.0"
 
 [tool.poetry.dev-dependencies]
 types-requests = "^2.25.11"
