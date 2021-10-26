@@ -3,16 +3,17 @@
 import os
 import time
 from argparse import ArgumentParser
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from itertools import combinations
 
+import mip
 import pandas as pd
 import requests
-from plotnine import aes, geom_point, geom_text, ggplot, geom_path, labs
+from plotnine import aes, geom_point, geom_text, ggplot, labs
 from plotnine.geoms import annotate
 from plotnine.scales import scale_color_cmap, xlim, ylim
 from plotnine.themes import theme_bw, theme_set
-import mip
+
 
 def get_url(*args) -> str:
     sleeper_base_url = "https://api.sleeper.app/v1"
@@ -82,7 +83,11 @@ def get_matchups(league_id: int, week: int) -> dict:
 def allowed_slots(roster: set, player_pos: list) -> list:
     """Return a list of allowed positions for the player"""
     std_pos = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
-    flex_pos = {'FLEX': set(['RB', 'WR', 'TE'])}
+    flex_pos = {
+        'FLEX': set(['RB', 'WR', 'TE']),
+        'WRRB_FLEX': set(['RB', 'WR']),
+        'REC_FLEX': set(['WR', 'TE']),
+    }
     if roster - set(std_pos) - set(flex_pos.keys()):
         raise NotImplementedError(f"Position in {roster} not supported")
     player_set = set(player_pos)
@@ -108,8 +113,6 @@ def max_points(league_roster, db_player, matchup) -> float:
     # List of player ID, slots, and model variable
     vars = []
     for pl_id, pl_slots in player_allowed.items():
-        pl_pts = players_points[pl_id]
-        # print(pl_id, pl_slots, pl_pts)
         pl_vars = []
         for slot in pl_slots:
             v = mod.add_var(name=f"{pl_id}_{slot}", var_type=mip.BINARY)
@@ -118,7 +121,6 @@ def max_points(league_roster, db_player, matchup) -> float:
         mod += mip.xsum(v for _, _, v in pl_vars) <= 1, pl_id
         vars.extend(pl_vars)
     for slot, n_players in starting_roster.items():
-        pos_vars = []
         mod += mip.xsum(v for _, pslot, v in vars if pslot == slot) <= n_players, slot
         # print(slot, n_players)
     mod.objective = mip.xsum(players_points[pid] * v for pid, _, v in vars)
@@ -262,17 +264,19 @@ def main():
 
     theme_set(theme_bw())
 
-    id_line_xy = [0., 1.]
-    id_data = pd.DataFrame({"x": id_line_xy, "y": id_line_xy})
-    id_line = geom_path(
-        data=id_data,
-        mapping=aes(x="x", y="y"),
-        inherit_aes=False, linetype="dashed"
-    )
+    # id_line_xy = [0., 1.]
+    # id_data = pd.DataFrame({"x": id_line_xy, "y": id_line_xy})
+    # id_line = geom_path(
+    #     data=id_data,
+    #     mapping=aes(x="x", y="y"),
+    #     inherit_aes=False,
+    #     linetype="dashed",
+    #     color="grey",
+    # )
 
     wr_plot = (
         ggplot(data=data, mapping=aes(x="luck", y="miwr"))
-        + geom_point(mapping=aes(color="points_for"))
+        + geom_point(mapping=aes(color="points_for"), size=3)
         # Make some dummy points so the text adjustment has room to move
         + geom_point(
             data=pd.DataFrame({"x": [-0.5, 0.5], "y": [0.0, 1.0]}),
@@ -293,7 +297,7 @@ def main():
         + xlim(-0.5, 0.5)
         + ylim(0.0, 1.0)
         + scale_color_cmap("cool")
-        + labs(title=f"{league_name} performance", x="Luck", y="Power")
+        + labs(title=f"{league_name} performance", x="Luck", y="Power", color="Points for")
         + annotate("text", x=0., y=.95, label="good", fontstyle="italic", color="grey")
         + annotate("text", x=0., y=.05, label="bad", fontstyle="italic", color="grey")
         + annotate("text", x=0.45, y=0.5, label="lucky", fontstyle="italic", color="grey")
@@ -304,12 +308,13 @@ def main():
     wr_plot.save("luck.png")
 
     eff_plot = (
-        ggplot(data=data, mapping=aes(x="bb_miwr", y="miwr"))
-        + geom_point()
-        + id_line
+        # ggplot(data=data, mapping=aes(x="bb_miwr", y="miwr"))
+        ggplot(data=data, mapping=aes(x="miwr - bb_miwr", y="bb_miwr"))
+        + geom_point(mapping=aes(color="bb_points_for"), size=3)
+        # + id_line
         # Make some dummy points so the text adjustment has room to move
         + geom_point(
-            data=pd.DataFrame({"x": [0., 1.], "y": [0.0, 1.0]}),
+            data=pd.DataFrame({"x": [-.25, 0.25], "y": [0.0, 1.0]}),
             alpha=0.0,
             color="white",
             inherit_aes=False,
@@ -324,10 +329,19 @@ def main():
                 },
             },
         )
-        + xlim(0.0, 1.0)
+        + xlim(-0.25, 0.25)
         + ylim(0.0, 1.0)
         + scale_color_cmap("cool")
-        + labs(title=f"{league_name} lineup efficiency", x="Roster power", y="Lineup power")
+        + labs(
+            title=f"{league_name} depth",
+            x="Lineup boost",
+            y="Roster power",
+            color="Max points for",
+        )
+        + annotate("text", x=-.2, y=.5, label="deep", fontstyle="italic", color="grey")
+        + annotate("text", x=.2, y=.5, label="shallow", fontstyle="italic", color="grey")
+        + annotate("text", x=0., y=.05, label="bad", fontstyle="italic", color="grey")
+        + annotate("text", x=0., y=.95, label="good", fontstyle="italic", color="grey")
     )
     eff_plot.save("eff.png")
 
