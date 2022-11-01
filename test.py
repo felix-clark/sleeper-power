@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from collections import Counter, defaultdict
 from itertools import combinations
 
+# TODO: Consider cvxpy for a simpler interface; possibly use mip backend
 import mip
 import pandas as pd
 import requests
