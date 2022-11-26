@@ -162,7 +162,11 @@ def main():
     points_for = {}
     points_against = {}
     for roster in rosters:
-        user = user_to_name[roster["owner_id"]]
+        try:
+            user = user_to_name[roster["owner_id"]]
+        except KeyError as e:
+            print(e)
+            user = "N/A"
         # record = roster["metadata"]["record"]
         settings = roster["settings"]
         wins = settings["wins"]
@@ -181,13 +185,17 @@ def main():
     scores_by_week = []
     best_scores_by_week = []
     for week in range(1, current_week):
-        print(week)
+        print(f"week {week}")
         matchups = get_matchups(league_id, week)
         week_results = {}
         best_week_results = {}
         for matchup in matchups:
             roster_id = matchup["roster_id"]
-            username = user_to_name[roster_to_id[roster_id]]
+            try:
+                username = user_to_name[roster_to_id[roster_id]]
+            except KeyError as e:
+                print(e)
+                username = "N/A"
             points = matchup["points"]
             best_points = max_points(league_roster, db_player, matchup)
             scores_by_user[username].append(points)
@@ -211,8 +219,9 @@ def main():
             score_a = weekly_scores[user_a]
             score_b = weekly_scores[user_b]
             if score_a == score_b:
-                print(f"A tie between {user_a} and {user_b}")
-                assert False, "Ties aren't implemented, should add 0.5"
+                print(f"A tie between {user_a} and {user_b} with a score of {score_a}")
+                miws[user_a] += 0.5
+                miws[user_b] += 0.5
             elif score_a < score_b:
                 miws[user_b] += 1
             elif score_a > score_b:
