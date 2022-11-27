@@ -27,7 +27,7 @@ def get_url(*args) -> str:
 def get_req(*args) -> dict:
     """Return a sleeper API request as a JSON"""
     url: str = get_url(*args)
-    req = requests.get(url)
+    req = requests.get(url, timeout=10)
     return req.json()
 
 
@@ -49,7 +49,7 @@ def get_user(user_id) -> dict:
 def get_users(league_id) -> dict:
     """Get all users in a league"""
     url = get_url("league", league_id, "users")
-    req = requests.get(url)
+    req = requests.get(url, timeout=10)
     users = req.json()
     return users
 
