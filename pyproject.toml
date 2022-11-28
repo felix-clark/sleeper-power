@@ -8,18 +8,20 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "3.10.8"
 pandas = "^1.5.2"
-numpy = "^1.23.5"
-plotnine = "^0.10.1"
-requests = "^2.28.1"
+numpy = "^1.23"
+plotnine = "^0.10"
+requests = "^2.28"
 adjustText = "^0.7.3"
 pyarrow = "^10.0.1"
-mip = "^1.13.0"
+mip = "^1.14.1"
+# These are needed for some reason for plotnine.
+"backports.weakref" = "^1.0.post1"
+"backports.zoneinfo" = "^0.2.1"
 
 [tool.poetry.dev-dependencies]
-types-requests = "^2.25.11"
+types-requests = "^2.28"
 pylint = "^2.11.1"
-typing-extensions = "^3.10.0"
-mypy = "^0.990"
+typing-extensions = "^4.4.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

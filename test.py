@@ -194,6 +194,7 @@ def main():
             try:
                 username = user_to_name[roster_to_id[roster_id]]
             except KeyError as e:
+                print(f"Unknown user from roster ID {roster_id}")
                 print(e)
                 username = "N/A"
             points = matchup["points"]
@@ -206,7 +207,7 @@ def main():
         best_scores_by_week.append(best_week_results)
     # print(scores_by_user)
     # print(scores_by_week)
-    print(best_scores_by_user)
+    # print(best_scores_by_user)
 
     # matchup-independent wins
     miws = defaultdict(int)
@@ -235,8 +236,9 @@ def main():
             score_a = weekly_scores[user_a]
             score_b = weekly_scores[user_b]
             if score_a == score_b:
-                print(f"A tie between {user_a} and {user_b}")
-                assert False, "Ties aren't implemented, should add 0.5"
+                print(f"A best-ball tie between {user_a} and {user_b} with a score of {score_a}")
+                bb_miws[user_a] += 0.5
+                bb_miws[user_b] += 0.5
             elif score_a < score_b:
                 bb_miws[user_b] += 1
             elif score_a > score_b:
@@ -248,7 +250,7 @@ def main():
     # matchup-independent win rates
     miwrs = {u: w / max_miws for u, w in miws.items()}
     bb_miwrs = {u: w / max_miws for u, w in bb_miws.items()}
-    print(miwrs)
+    # print(miwrs)
     assert sum(miws.values()) == n_rosters * max_miws // 2
     rank_list = sorted(miws, key=lambda n: miws[n], reverse=True)
     for user in rank_list:
