@@ -309,7 +309,7 @@ def main():
         + xlim(-0.5, 0.5)
         + ylim(0.0, 1.0)
         + scale_color_cmap("cool")
-        + labs(title=f"{league_name} performance", x="Luck", y="Power", color="Points for")
+        + labs(title=f"{league_name} performance", x="Matchup luck", y="Power", color="Points for")
         + annotate("text", x=0., y=.95, label="good", fontstyle="italic", color="grey")
         + annotate("text", x=0., y=.05, label="bad", fontstyle="italic", color="grey")
         + annotate("text", x=0.45, y=0.5, label="lucky", fontstyle="italic", color="grey")
